@@ -7,37 +7,38 @@ export default function Chat() {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
 
-  async function handleSend() {
-    if (!input) return
-    const userMsg = { role: 'user', content: input }
-    const next = [...messages, userMsg]
-    setMessages(next)
-    setInput('')
-    setLoading(true)
-    try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: next }),
-      })
-
-      // safe parse
-      const ct = res.headers.get('content-type') || ''
-      let data
-      if (ct.includes('application/json')) data = await res.json()
-      else {
-        const txt = await res.text()
-        try { data = JSON.parse(txt) } catch { data = { raw: txt } }
-      }
-      if (!res.ok) throw new Error(data?.error?.message || data?.raw || 'API error')
-      const assistant = data.choices?.[0]?.message || { role: 'assistant', content: data.choices?.[0]?.text || data.text || data.raw || JSON.stringify(data) }
-       setMessages((m) => [...m, assistant])
-     } catch (err) {
-       setMessages((m) => [...m, { role: 'assistant', content: 'Error: ' + err.message }])
-     } finally {
-       setLoading(false)
-     }
+async function handleSend() {
+  if (!input) return
+  const userMsg = { role: 'user', content: input }
+  const next = [...messages, userMsg]
+  setMessages(next)
+  setInput('')
+  setLoading(true)
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: next }),
+    })
+    const data = await res.json()
+    console.log('Response data:', data)
+    
+    // Handle both Gemini and OpenAI formats
+    const assistantText = 
+      data.choices?.[0]?.message?.content ||  // OpenAI format
+      data.candidates?.[0]?.content?.parts?.[0]?.text ||  // Gemini format
+      'Error parsing response'
+    
+    const assistant = { role: 'assistant', content: assistantText }
+    console.log('Extracted assistant:', assistant)
+    setMessages((m) => [...m, assistant])
+  } catch (err) {
+    console.error('Fetch error:', err)
+    setMessages((m) => [...m, { role: 'assistant', content: 'Error: ' + err.message }])
+  } finally {
+    setLoading(false)
   }
+}
   return (
     <div className="chat">
       <h3>AI Chat</h3>

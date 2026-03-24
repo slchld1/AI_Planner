@@ -8,25 +8,22 @@ app.use(express.json())
 
 // Call Gemini/Vertex AI. Uses GEMINI_API_KEY if set, otherwise uses ADC (service account).
 async function callGemini(promptText) {
-  const model = process.env.GEMINI_MODEL || process.env.VITE_GEMINI_MODEL || 'gemini-1.5-pro'
-  const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY
-  const base = 'https://generativelanguage.googleapis.com/v1'
-  const url = apiKey
-    ? `${base}/models/${model}:generate?key=${apiKey}`
-    : `${base}/models/${model}:generate`
+  const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash'
+  const apiKey = process.env.GEMINI_API_KEY
+  const url = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${apiKey}`
 
   const body = {
-    prompt: { text: promptText },
-    maxOutputTokens: 256,
+    contents: [
+      {
+        parts: [
+          { text: promptText }
+        ]
+      }
+    ]
   }
 
   const headers = { 'Content-Type': 'application/json' }
-  if (!apiKey) {
-    const auth = new GoogleAuth({ scopes: ['https://www.googleapis.com/auth/cloud-platform'] })
-    const client = await auth.getClient()
-    const token = await client.getAccessToken()
-    headers.Authorization = `Bearer ${token.token || token}`
-  }
+
 
   try {
     console.log('Calling upstream:', url)
@@ -50,7 +47,24 @@ app.post('/api/chat', async (req, res) => {
     const out = await callGemini(promptText)
     console.log('callGemini result status:', out.status)
     if (!out.ok) return res.status(out.status).send(out.json ?? out.raw ?? 'upstream error')
-    return res.json(out.json)
+    
+    // Extract text from Gemini response and convert to OpenAI format
+    const geminiData = out.json
+    const assistantText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || 'No response'
+    
+    const response = {
+      choices: [
+        {
+          message: {
+            role: 'assistant',
+            content: assistantText
+          }
+        }
+      ]
+    }
+    
+    console.log('Sending to client:', response)
+    return res.json(response)
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: err.message })
